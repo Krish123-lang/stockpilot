@@ -1,3 +1,49 @@
 from django.db import models
+import uuid
+from django.utils.text import slugify
+from django.conf import settings
 
-# Create your models here.
+
+class Organization(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=150)
+    slug = models.SlugField(max_length=160, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Membership(models.Model):
+    class Role(models.TextChoices):
+        OWNER = "OWNER", "Owner"
+        MANAGER = "MANAGER", "Manager"
+        SALES = "SALES", "Sales Staff"
+        INVENTORY = "INVENTORY", "Inventory Staff"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="memberships")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="memberships")
+    role = models.CharField(max_length=20, choices=Role.choices)
+    is_active = models.BooleanField(default=True)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "user"],
+                name="unique_user_per_organization",
+            )
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["organization", "role"],
+                name="membership_org_role_idx",
+            )
+        ]
+
+        def __str__(self):
+            return f"{self.user.email} - {self.organization.name} ({self.role})"
