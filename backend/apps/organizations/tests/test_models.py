@@ -59,5 +59,5 @@ class OrganizationModelTests(TestCase):
         )
         self.assertEqual(
             membership.role,
-            membership.Role.SALES
+            Membership.Role.SALES
         )
