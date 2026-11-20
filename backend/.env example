@@ -1,0 +1,8 @@
+SECRET_KEY=
+DEBUG=True
+
+DB_NAME=stockpilot_db
+DB_USER=stockpilot_user
+DB_PASSWORD=database_password
+DB_HOST=127.0.0.1
+DB_PORT=5432
