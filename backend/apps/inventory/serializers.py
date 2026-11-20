@@ -146,3 +146,16 @@ class StockMovementCreateSerializer(serializers.Serializer):
             instance,
             context=self.context,
         ).data
+    
+    def validate_movement_type(self, value):
+        restricted_types = {
+            StockMovement.MovementType.ADJUSTMENT,
+            StockMovement.MovementType.REVERSAL,
+        }
+
+        if value in restricted_types:
+            raise serializers.ValidationError(
+                "This movement type requires a dedicated workflow."
+            )
+
+        return value
