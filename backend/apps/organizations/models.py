@@ -45,5 +45,5 @@ class Membership(models.Model):
             )
         ]
 
-        def __str__(self):
-            return f"{self.user.email} - {self.organization.name} ({self.role})"
+    def __str__(self):
+        return f"{self.user.email} - {self.organization.name} ({self.role})"

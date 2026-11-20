@@ -8,16 +8,11 @@ from apps.products.models import ProductVariant
 
 
 class InventoryBalance(models.Model):
-    id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False,)
-    organization = models.ForeignKey(
-        Organization, on_delete=models.PROTECT, related_name="inventory_balances",)
-    variant = models.ForeignKey(
-        ProductVariant, on_delete=models.PROTECT, related_name="inventory_balances",)
-    quantity_on_hand = models.DecimalField(
-        max_digits=14, decimal_places=3, default=0,)
-    quantity_damaged = models.DecimalField(
-        max_digits=14, decimal_places=3, default=0,)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False,)
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="inventory_balances",)
+    variant = models.ForeignKey(ProductVariant, on_delete=models.PROTECT, related_name="inventory_balances",)
+    quantity_on_hand = models.DecimalField(max_digits=14, decimal_places=3, default=0,)
+    quantity_damaged = models.DecimalField(max_digits=14, decimal_places=3, default=0,)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -60,22 +55,16 @@ class StockMovement(models.Model):
         REPAIR = "REPAIR", "Repair"
         REVERSAL = "REVERSAL", "Movement reversal"
 
-    id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False,)
-    organization = models.ForeignKey(
-        Organization, on_delete=models.PROTECT, related_name="stock_movements",)
-    variant = models.ForeignKey(
-        ProductVariant, on_delete=models.PROTECT, related_name="stock_movements",)
-    movement_type = models.CharField(
-        max_length=30, choices=MovementType.choices,)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False,)
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT, related_name="stock_movements",)
+    variant = models.ForeignKey(ProductVariant, on_delete=models.PROTECT, related_name="stock_movements",)
+    movement_type = models.CharField(max_length=30, choices=MovementType.choices,)
     quantity_delta = models.DecimalField(max_digits=14, decimal_places=3,)
-    damaged_delta = models.DecimalField(
-        max_digits=14, decimal_places=3, default=0,)
+    damaged_delta = models.DecimalField(max_digits=14, decimal_places=3, default=0,)
     quantity_after = models.DecimalField(max_digits=14, decimal_places=3,)
     damaged_after = models.DecimalField(max_digits=14, decimal_places=3,)
     reason = models.TextField(blank=True)
-    created_by = models.ForeignKey(
-        "accounts.User", on_delete=models.PROTECT, related_name="stock_movements",)
+    created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="stock_movements",)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -120,24 +109,20 @@ class StockAdjustment(models.Model):
         APPROVED = "APPROVED", "Approved"
         REJECTED = "REJECTED", "Rejected"
 
-    id = models.UUIDField(
-        primary_key=True, default=uuid.uuid4, editable=False,)
-    organization = models.ForeignKey(
-        Organization, on_delete=models.PROTECT, related_name="stock_adjustments",)
-    variant = models.ForeignKey(
-        ProductVariant, on_delete=models.PROTECT, related_name="stock_adjustments",)
-    quantity_change = models.DecimalField(max_digits=14, decimal_places=3,)
-    damaged_quantity_change = models.DecimalField(
-        max_digits=14, decimal_places=3, default=0,)
+    id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False,)
+    organization = models.ForeignKey(Organization,on_delete=models.PROTECT,related_name="stock_adjustments",)
+    variant = models.ForeignKey(ProductVariant,on_delete=models.PROTECT,related_name="stock_adjustments",)
+    quantity_change = models.DecimalField(max_digits=14,decimal_places=3,)
+    damaged_quantity_change = models.DecimalField(max_digits=14,decimal_places=3,default=0,)
     reason = models.TextField()
-    status = models.CharField(
-        max_length=10, choices=Status.choices, default=Status.PENDING)
-    created_by = models.ForeignKey(
-        "accounts.User", on_delete=models.PROTECT, related_name="created_stock_adjustments",)
-    approved_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT,
-                                    related_name="approved_stock_adjustments", null=True, blank=True,)
+    status = models.CharField(max_length=10,choices=Status.choices,default=Status.PENDING,)
+    created_by = models.ForeignKey("accounts.User",on_delete=models.PROTECT,related_name="created_stock_adjustments",)
+    approved_by = models.ForeignKey("accounts.User",on_delete=models.PROTECT,related_name="approved_stock_adjustments",null=True,blank=True,)
+    rejected_by = models.ForeignKey("accounts.User",on_delete=models.PROTECT,related_name="rejected_stock_adjustments",null=True,blank=True,)
+    approved_at = models.DateTimeField(null=True,blank=True,)
+    rejected_at = models.DateTimeField(null=True,blank=True,)
+    rejection_reason = models.TextField(blank=True,default="",)
     created_at = models.DateTimeField(auto_now_add=True)
-    approved_at = models.DateTimeField(null=True, blank=True,)
 
     class Meta:
         ordering = ["-created_at"]
@@ -150,6 +135,63 @@ class StockAdjustment(models.Model):
             models.Index(
                 fields=["organization", "created_at"],
                 name="adjustment_org_date_idx",
+            ),
+        ]
+
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(quantity_change__gt=0)
+                    | Q(quantity_change__lt=0)
+                    | Q(damaged_quantity_change__gt=0)
+                    | Q(damaged_quantity_change__lt=0)
+                ),
+                name="adjustment_must_change_inventory",
+            ),
+
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        status="PENDING",
+                        approved_by__isnull=True,
+                        approved_at__isnull=True,
+                        rejected_by__isnull=True,
+                        rejected_at__isnull=True,
+                        rejection_reason="",
+                    )
+                    | Q(
+                        status="APPROVED",
+                        approved_by__isnull=False,
+                        approved_at__isnull=False,
+                        rejected_by__isnull=True,
+                        rejected_at__isnull=True,
+                        rejection_reason="",
+                    )
+                    | Q(
+                        status="REJECTED",
+                        approved_by__isnull=True,
+                        approved_at__isnull=True,
+                        rejected_by__isnull=False,
+                        rejected_at__isnull=False,
+                    )
+                ),
+                name="adjustment_status_fields_consistent",
+            ),
+
+            models.CheckConstraint(
+                condition=(
+                    Q(approved_by__isnull=True)
+                    | ~Q(approved_by=models.F("created_by"))
+                ),
+                name="adjustment_approver_not_creator",
+            ),
+
+            models.CheckConstraint(
+                condition=(
+                    Q(rejected_by__isnull=True)
+                    | ~Q(rejected_by=models.F("created_by"))
+                ),
+                name="adjustment_rejector_not_creator",
             ),
         ]
 
