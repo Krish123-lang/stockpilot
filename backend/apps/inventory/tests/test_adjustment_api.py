@@ -213,7 +213,8 @@ class StockAdjustmentAPITests(APITestCase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_400_BAD_REQUEST,
+            # status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN
         )
 
         self.assertEqual(
@@ -351,7 +352,8 @@ class StockAdjustmentAPITests(APITestCase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_400_BAD_REQUEST,
+            # status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN
         )
 
         adjustment.refresh_from_db()
@@ -475,7 +477,8 @@ class StockAdjustmentAPITests(APITestCase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_400_BAD_REQUEST,
+            # status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN
         )
 
         adjustment.refresh_from_db()

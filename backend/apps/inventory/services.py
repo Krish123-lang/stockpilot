@@ -6,6 +6,38 @@ from apps.inventory.models import StockAdjustment
 from apps.organizations.models import Membership
 from django.utils import timezone
 
+
+def validate_inventory_quantity(value, *, field_name="quantity"):
+    """
+    Convert and validate a quantity for DecimalField(
+        max_digits=14,
+        decimal_places=3,
+    ).
+
+    Rejects invalid values instead of silently rounding them.
+    """
+    try:
+        quantity = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError(f"{field_name} must be a valid decimal number.")
+
+    if not quantity.is_finite():
+        raise ValidationError(f"{field_name} must be a finite number.")
+
+    try:
+        normalized = quantity.normalize()
+
+        if normalized != normalized.quantize(Decimal("0.001")):
+            raise ValidationError(f"{field_name} cannot have more than 3 decimal places.")
+    except InvalidOperation:
+        raise ValidationError(f"{field_name} exceeds the permitted decimal precision.")
+
+    if abs(quantity) >= Decimal("100000000000"):
+        raise ValidationError(f"{field_name} cannot exceed 11 digits before the decimal point.")
+
+    return quantity
+
+
 @transaction.atomic
 def get_or_create_inventory_balance(*, organization, variant):
     if variant.organization_id != organization.id:
@@ -20,24 +52,42 @@ def validate_movement_rules(*, movement_type, quantity_delta, damaged_delta):
         if quantity_delta <= 0:
             raise ValidationError("A receipt must increase physical inventory.")
 
+        if damaged_delta < 0 or damaged_delta > quantity_delta:
+            raise ValidationError(
+                "Damaged quantity in a receipt must be "
+                "between zero and the received quantity."
+            )
+
     elif movement_type == StockMovement.MovementType.SALE:
         if quantity_delta >= 0 or damaged_delta != 0:
-            raise ValidationError("A sale must decrease physical inventory without changing damaged quantity.")
+            raise ValidationError(
+                "A sale must decrease physical inventory "
+                "without changing damaged quantity."
+            )
 
     elif movement_type == StockMovement.MovementType.CUSTOMER_RETURN:
         if quantity_delta <= 0:
             raise ValidationError("A customer return must increase physical inventory.")
 
         if damaged_delta < 0 or damaged_delta > quantity_delta:
-            raise ValidationError("Damaged quantity in a return must be between zero and the returned quantity.")
+            raise ValidationError(
+                "Damaged quantity in a return must be "
+                "between zero and the returned quantity."
+            )
 
     elif movement_type == StockMovement.MovementType.DAMAGE:
         if quantity_delta != 0 or damaged_delta <= 0:
-            raise ValidationError("A damage movement must increase damaged quantity without changing physical inventory.")
+            raise ValidationError(
+                "A damage movement must increase damaged quantity "
+                "without changing physical inventory."
+            )
 
     elif movement_type == StockMovement.MovementType.REPAIR:
         if quantity_delta != 0 or damaged_delta >= 0:
-            raise ValidationError("A repair must decrease damaged quantity without changing physical inventory.")
+            raise ValidationError(
+                "A repair must decrease damaged quantity "
+                "without changing physical inventory."
+            )
 
     elif movement_type == StockMovement.MovementType.ADJUSTMENT:
         if quantity_delta == 0 and damaged_delta == 0:
@@ -49,14 +99,12 @@ def validate_movement_rules(*, movement_type, quantity_delta, damaged_delta):
 
 @transaction.atomic
 def apply_stock_movement(*,organization, variant, movement_type, quantity_delta, damaged_delta=Decimal("0.000"), created_by, reason=""):
-    quantity_delta = Decimal(str(quantity_delta))
-    damaged_delta = Decimal(str(damaged_delta))
-    
+    quantity_delta = validate_inventory_quantity(quantity_delta,field_name="quantity_delta",)
+
+    damaged_delta = validate_inventory_quantity(damaged_delta,field_name="damaged_delta",)
+
     if movement_type not in StockMovement.MovementType.values:
         raise ValidationError("Invalid stock movement type.")
-    
-    if not quantity_delta.is_finite() or not damaged_delta.is_finite():
-        raise ValidationError("Stock quantities must be finite numbers.")
 
     if variant.organization_id != organization.id:
         raise ValidationError("Product variant does not belong to this organization.")
@@ -111,15 +159,8 @@ def create_stock_adjustment(*,organization,variant,quantity_change,damaged_quant
     if variant.organization_id != organization.id:
         raise ValidationError("Product variant does not belong to this organization.")
 
-    # Validate and normalize decimal values.
-    try:
-        quantity_change = Decimal(str(quantity_change))
-        damaged_quantity_change = Decimal(str(damaged_quantity_change))
-    except (InvalidOperation, TypeError, ValueError):
-        raise ValidationError("Invalid inventory quantity.")
-
-    if (not quantity_change.is_finite()or not damaged_quantity_change.is_finite()):
-        raise ValidationError("Inventory quantities must be finite numbers.")
+    quantity_change = validate_inventory_quantity(quantity_change,field_name="quantity_change",)
+    damaged_quantity_change = validate_inventory_quantity(damaged_quantity_change,field_name="damaged_quantity_change",)
 
     # An adjustment must actually change inventory.
     if quantity_change == 0 and damaged_quantity_change == 0:

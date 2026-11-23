@@ -52,34 +52,19 @@ class InventoryAPITests(APITestCase):
         response = self.client.post(self.initialize_url(),{"variant": str(self.variant_b.id)},format="json",)
         self.assertEqual(response.status_code,status.HTTP_400_BAD_REQUEST,)
 
-    def test_user_can_create_stock_receipt(self):
-        InventoryBalance.objects.create(organization=self.organization_a,variant=self.variant_a,)
-        response = self.client.post(self.movement_url(),{"variant": str(self.variant_a.id),"movement_type": "RECEIPT","quantity_delta": "5.000","reason": "Initial stock receipt",},format="json",)
-        self.assertEqual(response.status_code,status.HTTP_201_CREATED,)
-        balance = InventoryBalance.objects.get(organization=self.organization_a,variant=self.variant_a,)
-        self.assertEqual(balance.quantity_on_hand,Decimal("5.000"),)
-        self.assertEqual(StockMovement.objects.filter(organization=self.organization_a,).count(),1,)
 
-    def test_user_cannot_create_movement_for_foreign_variant(self):
+    def test_generic_endpoint_rejects_stock_movement_creation(self):
         InventoryBalance.objects.create(organization=self.organization_a,variant=self.variant_a,)
-        response = self.client.post(self.movement_url(),{"variant": str(self.variant_b.id),"movement_type": "RECEIPT","quantity_delta": "5.000",},format="json",)
-        self.assertEqual(response.status_code,status.HTTP_400_BAD_REQUEST,)
-
-    def test_sale_cannot_reduce_stock_below_zero(self):
-        InventoryBalance.objects.create(organization=self.organization_a,variant=self.variant_a,)
-        response = self.client.post(self.movement_url(),{"variant": str(self.variant_a.id),"movement_type": "SALE","quantity_delta": "-5.000",},format="json",)
-        self.assertEqual(response.status_code,status.HTTP_400_BAD_REQUEST,)
+        response = self.client.post(self.movement_url(),{"variant": str(self.variant_a.id),"movement_type": "RECEIPT","quantity_delta": "5.000","reason": "Attempted direct receipt",},format="json",)
+        self.assertEqual(response.status_code,status.HTTP_405_METHOD_NOT_ALLOWED,)
         balance = InventoryBalance.objects.get(organization=self.organization_a,variant=self.variant_a,)
         self.assertEqual(balance.quantity_on_hand,Decimal("0.000"),)
+        self.assertEqual(StockMovement.objects.count(),0,)
 
-    def test_generic_endpoint_rejects_adjustment(self):
-        InventoryBalance.objects.create(organization=self.organization_a,variant=self.variant_a,)
-        response = self.client.post(self.movement_url(),{"variant": str(self.variant_a.id),"movement_type": "ADJUSTMENT","quantity_delta": "5.000","reason": "Attempted direct adjustment",},format="json",)
-        self.assertEqual(response.status_code,status.HTTP_400_BAD_REQUEST,)
 
     def test_user_can_list_stock_movements(self):
-        InventoryBalance.objects.create(organization=self.organization_a,variant=self.variant_a,)
-        self.client.post(self.movement_url(),{"variant": str(self.variant_a.id),"movement_type": "RECEIPT","quantity_delta": "5.000",},format="json",)
+        InventoryBalance.objects.create(organization=self.organization_a,variant=self.variant_a,quantity_on_hand=Decimal("5.000"),)
+        StockMovement.objects.create(organization=self.organization_a,variant=self.variant_a,movement_type=StockMovement.MovementType.RECEIPT,quantity_delta=Decimal("5.000"),damaged_delta=Decimal("0.000"),quantity_after=Decimal("5.000"),damaged_after=Decimal("0.000"),reason="Test receipt",created_by=self.user_a,)
         response = self.client.get(self.movement_url())
         self.assertEqual(response.status_code,status.HTTP_200_OK,)
         self.assertEqual(len(response.data), 1)

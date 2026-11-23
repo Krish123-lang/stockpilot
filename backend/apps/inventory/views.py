@@ -3,10 +3,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from django.core.exceptions import ValidationError as DjangoValidationError
-from apps.organizations.permissions import IsActiveOrganizationMember
+from apps.organizations.permissions import IsActiveOrganizationMember, HasOrganizationRole
 from apps.inventory.models import InventoryBalance, StockMovement, StockAdjustment
 from apps.inventory.serializers import (InventoryBalanceSerializer,InventoryInitializeSerializer,StockMovementSerializer,StockMovementCreateSerializer, StockAdjustmentSerializer, StockAdjustmentCreateSerializer, StockAdjustmentRejectSerializer,)
 from apps.inventory.services import (approve_stock_adjustment,reject_stock_adjustment)
+from apps.organizations.models import Membership
 
 class OrganizationScopedInventoryViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated,IsActiveOrganizationMember,]
@@ -18,6 +19,9 @@ class OrganizationScopedInventoryViewSet(viewsets.GenericViewSet):
 
 class InventoryBalanceViewSet(OrganizationScopedInventoryViewSet):
     queryset = InventoryBalance.objects.all()
+    permission_classes = [IsAuthenticated,IsActiveOrganizationMember,HasOrganizationRole,]
+
+    role_permissions = {"list": {Membership.Role.OWNER,Membership.Role.MANAGER,Membership.Role.SALES,Membership.Role.INVENTORY,},"retrieve": {Membership.Role.OWNER,Membership.Role.MANAGER,Membership.Role.SALES,Membership.Role.INVENTORY,},"initialize": {Membership.Role.OWNER,Membership.Role.MANAGER,Membership.Role.INVENTORY,},}
 
     def get_queryset(self):
         return (InventoryBalance.objects.filter(organization=self.organization).select_related("variant", "variant__product").order_by("variant__sku"))
@@ -51,16 +55,14 @@ class InventoryBalanceViewSet(OrganizationScopedInventoryViewSet):
         return Response(response_serializer.data,status=201,)
 
 
+
 class StockMovementViewSet(OrganizationScopedInventoryViewSet):
     queryset = StockMovement.objects.all()
+    http_method_names = ["get", "head", "options"]
+    serializer_class = StockMovementSerializer
 
     def get_queryset(self):
-        return (StockMovement.objects.filter(organization=self.organization).select_related("variant", "variant__product", "created_by").order_by("-created_at"))
-
-    def get_serializer_class(self):
-        if self.action == "create":
-            return StockMovementCreateSerializer
-        return StockMovementSerializer
+        return (StockMovement.objects.filter(organization=self.organization).select_related("variant","variant__product","created_by",).order_by("-created_at"))
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -72,22 +74,12 @@ class StockMovementViewSet(OrganizationScopedInventoryViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        try:
-            movement = serializer.save()
-
-        except DjangoValidationError as exc:
-            raise DRFValidationError(exc.messages)
-
-        response_serializer = StockMovementSerializer(movement,context=self.get_serializer_context(),)
-        return Response(response_serializer.data,status=201,)
-
 
 class StockAdjustmentViewSet(OrganizationScopedInventoryViewSet):
     queryset = StockAdjustment.objects.all()
+    permission_classes = [IsAuthenticated,IsActiveOrganizationMember,HasOrganizationRole,]
+
+    role_permissions = {"list": {Membership.Role.OWNER,Membership.Role.MANAGER,Membership.Role.SALES,Membership.Role.INVENTORY,},"retrieve": {Membership.Role.OWNER,Membership.Role.MANAGER,Membership.Role.SALES,Membership.Role.INVENTORY,},"create": {Membership.Role.OWNER,Membership.Role.MANAGER,Membership.Role.INVENTORY,},"approve": {Membership.Role.OWNER,Membership.Role.MANAGER,},"reject": {Membership.Role.OWNER,Membership.Role.MANAGER,},}
 
     def get_queryset(self):
         return (StockAdjustment.objects.filter(organization=self.organization).select_related("variant","variant__product","created_by","approved_by","rejected_by",).order_by("-created_at"))

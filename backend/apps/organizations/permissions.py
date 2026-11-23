@@ -1,8 +1,5 @@
-
 from rest_framework.permissions import BasePermission
-
 from apps.organizations.models import Membership
-
 
 class IsActiveOrganizationMember(BasePermission):
     """
@@ -24,17 +21,7 @@ class IsActiveOrganizationMember(BasePermission):
             return False
 
         # 3. Verify active membership and active organization
-        membership = (
-            Membership.objects
-            .select_related("organization")
-            .filter(
-                user=request.user,
-                organization_id=organization_id,
-                is_active=True,
-                organization__is_active=True,
-            )
-            .first()
-        )
+        membership = (Membership.objects.select_related("organization").filter(user=request.user,organization_id=organization_id,is_active=True,organization__is_active=True,).first())
 
         if membership is None:
             return False
@@ -43,3 +30,24 @@ class IsActiveOrganizationMember(BasePermission):
         request.organization_membership = membership
 
         return True
+
+
+class HasOrganizationRole(BasePermission):
+    """
+    Checks whether the verified organization membership
+    has a role permitted for the current view action.
+
+    IsActiveOrganizationMember must run before this permission.
+    """
+
+    message = "Your role does not have permission to perform this action."
+
+    def has_permission(self, request, view):
+        membership = getattr(request,"organization_membership",None,)
+
+        if membership is None:
+            return False
+
+        role_permissions = getattr(view,"role_permissions",{},)
+        allowed_roles = role_permissions.get(getattr(view, "action", None),set(),)
+        return membership.role in allowed_roles
