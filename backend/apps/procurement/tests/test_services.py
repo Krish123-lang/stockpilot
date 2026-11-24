@@ -215,7 +215,6 @@ class PurchaseOrderSubmissionTests(TestCase):
             first_submission.order_number,
         )
 
-    
     def test_failed_submission_rolls_back_sequence_increment(self):
         purchase_order = self.create_purchase_order()
         self.add_item(purchase_order)
@@ -242,8 +241,7 @@ class PurchaseOrderSubmissionTests(TestCase):
             PurchaseOrder.Status.DRAFT,
         )
         self.assertIsNone(purchase_order.order_number)
-    
-    
+
     def test_failed_submission_preserves_existing_sequence_number(self):
         current_year = timezone.localdate().year
 
@@ -275,8 +273,8 @@ class PurchaseOrderSubmissionTests(TestCase):
             PurchaseOrder.Status.DRAFT,
         )
         self.assertIsNone(purchase_order.order_number)
-        
-    
+
+
     def test_submission_does_not_change_inventory_or_create_movements(self):
         balance = InventoryBalance.objects.create(
             organization=self.org_a,
