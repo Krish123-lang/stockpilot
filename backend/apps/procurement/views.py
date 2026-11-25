@@ -5,9 +5,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from apps.organizations.models import Membership
 from apps.organizations.permissions import ( IsActiveOrganizationMember, HasOrganizationRole)
-from apps.procurement.models import PurchaseOrder
+from apps.procurement.models import PurchaseOrder, PurchaseOrderItem
 from apps.procurement.serializers import ( GoodsReceiptCreateSerializer, GoodsReceiptResponseSerializer)
 from apps.procurement.services import receive_purchase_order
+from django.db.models import Q, Prefetch
+from rest_framework import mixins, status
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.viewsets import GenericViewSet
+from apps.procurement.serializers import ( PurchaseOrderListSerializer, PurchaseOrderDetailSerializer)
 
 class GoodsReceiptViewSet(viewsets.GenericViewSet):
     permission_classes = [ IsAuthenticated, IsActiveOrganizationMember, HasOrganizationRole, ]
@@ -72,3 +77,60 @@ class GoodsReceiptViewSet(viewsets.GenericViewSet):
             response_serializer.data,
             status=response_status,
         )
+
+class PurchaseOrderPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+class PurchaseOrderViewSet( mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewSet):
+    permission_classes = [ IsAuthenticated, IsActiveOrganizationMember, HasOrganizationRole,]
+    pagination_class = PurchaseOrderPagination
+    role_permissions = {
+        "list": ["OWNER", "MANAGER", "SALES", "INVENTORY"],
+        "retrieve": ["OWNER", "MANAGER", "SALES", "INVENTORY"],
+    }
+
+    def get_queryset(self):
+        queryset = (PurchaseOrder.objects.filter( organization_id=self.kwargs["organization_id"],).select_related("supplier", "created_by"))
+
+        if self.action == "list":
+            # The list serializer calculates total_amount from items.
+            queryset = queryset.prefetch_related("items")
+
+            status_filter = self.request.query_params.get("status")
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+
+            search = self.request.query_params.get("search")
+            if search:
+                queryset = queryset.filter( Q(order_number__icontains=search) | Q(supplier__name__icontains=search))
+
+        elif self.action == "retrieve":
+            queryset = queryset.prefetch_related( Prefetch( "items", queryset=( PurchaseOrderItem.objects .select_related("variant", "variant__product")),) )
+
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return PurchaseOrderDetailSerializer
+
+        return PurchaseOrderListSerializer
+
+    def list(self, request, *args, **kwargs):
+        allowed_statuses = { choice[0] for choice in PurchaseOrder.Status.choices}
+
+        status_filter = request.query_params.get("status")
+
+        if status_filter and status_filter not in allowed_statuses:
+            return Response(
+                {
+                    "status": [
+                        f"Invalid status. Allowed values: "
+                        f"{', '.join(sorted(allowed_statuses))}."
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return super().list(request, *args, **kwargs)

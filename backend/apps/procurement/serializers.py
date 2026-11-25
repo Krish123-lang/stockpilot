@@ -1,6 +1,7 @@
 from decimal import Decimal
 from rest_framework import serializers
 from apps.procurement.models import GoodsReceipt, GoodsReceiptItem
+from apps.procurement.models import ( Supplier, PurchaseOrder, PurchaseOrderItem,)
 
 class GoodsReceiptItemInputSerializer(serializers.Serializer):
     purchase_order_item_id = serializers.UUIDField()
@@ -48,4 +49,44 @@ class GoodsReceiptResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = GoodsReceipt
         fields = [ "id", "organization_id", "purchase_order_id", "received_by_id", "received_at", "supplier_reference", "notes", "items", "created_at", ]
+        read_only_fields = fields
+
+
+class PurchaseOrderSupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = ["id", "name"]
+        read_only_fields = fields
+
+
+class PurchaseOrderItemResponseSerializer(serializers.ModelSerializer):
+    variant_id = serializers.UUIDField(read_only=True)
+    sku = serializers.CharField( source="variant.sku", read_only=True,)
+    variant_name = serializers.CharField( source="variant.name", read_only=True,)
+    product_name = serializers.CharField( source="variant.product.name", read_only=True,)
+    unit = serializers.CharField( source="variant.unit", read_only=True, )
+    line_total = serializers.DecimalField( max_digits=16, decimal_places=2, read_only=True, )
+
+    class Meta:
+        model = PurchaseOrderItem
+        fields = [ "id", "variant_id", "product_name", "variant_name", "sku", "unit", "quantity_ordered", "unit_cost", "line_total", "created_at", ]
+        read_only_fields = fields
+
+
+class PurchaseOrderListSerializer(serializers.ModelSerializer):
+    supplier = PurchaseOrderSupplierSerializer(read_only=True)
+    total_amount = serializers.DecimalField( max_digits=16, decimal_places=2, read_only=True,)
+    created_by_email = serializers.EmailField( source="created_by.email", read_only=True, )
+
+    class Meta:
+        model = PurchaseOrder
+        fields = [ "id", "order_number", "supplier", "status", "total_amount", "expected_delivery_date", "created_by_email", "created_at",]
+        read_only_fields = fields
+
+
+class PurchaseOrderDetailSerializer(PurchaseOrderListSerializer):
+    items = PurchaseOrderItemResponseSerializer( many=True, read_only=True,)
+
+    class Meta(PurchaseOrderListSerializer.Meta):
+        fields = [ *PurchaseOrderListSerializer.Meta.fields, "ordered_at", "submitted_at", "notes", "items", "updated_at",]
         read_only_fields = fields
