@@ -46,13 +46,14 @@ class GoodsReceiptViewSet(viewsets.GenericViewSet):
                 raise DRFValidationError( {"Idempotency-Key": "Maximum length is 128 characters."} )
 
         try:
-            receipt = receive_purchase_order(
+            receipt, created = receive_purchase_order(
                 purchase_order_id=purchase_order.id,
                 received_by=request.user,
                 items=input_serializer.validated_data["items"],
-                supplier_reference=input_serializer.validated_data[ "supplier_reference" ],
+                supplier_reference=input_serializer.validated_data["supplier_reference"],
                 notes=input_serializer.validated_data["notes"],
                 idempotency_key=idempotency_key,
+                return_created=True,
             )
 
         except DjangoValidationError as exc:
@@ -61,4 +62,13 @@ class GoodsReceiptViewSet(viewsets.GenericViewSet):
         # Load related receipt items efficiently for the response.
         receipt = ( receipt.__class__.objects .prefetch_related("items") .get(id=receipt.id))
         response_serializer = GoodsReceiptResponseSerializer( receipt, context=self.get_serializer_context(), )
-        return Response( response_serializer.data, status=status.HTTP_201_CREATED, )
+        response_status = (
+            status.HTTP_201_CREATED
+            if created
+            else status.HTTP_200_OK
+        )
+
+        return Response(
+            response_serializer.data,
+            status=response_status,
+        )

@@ -124,7 +124,7 @@ def build_receipt_fingerprint( *, purchase_order_id, normalized_items, supplier_
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 @transaction.atomic
-def receive_purchase_order(*,purchase_order_id,received_by,items,supplier_reference="",notes="",received_at=None,  idempotency_key=None,):
+def receive_purchase_order( *, purchase_order_id, received_by, items, supplier_reference="", notes="", received_at=None, idempotency_key=None, return_created=False,):
     """
     Record a physical delivery against an ordered purchase order.
 
@@ -245,6 +245,9 @@ def receive_purchase_order(*,purchase_order_id,received_by,items,supplier_refere
                     "with a different receipt request."
                 )
 
+            if return_created:
+                return existing_receipt, False
+
             return existing_receipt
 
 
@@ -318,6 +321,9 @@ def receive_purchase_order(*,purchase_order_id,received_by,items,supplier_refere
                 "with a different receipt request."
             )
 
+        if return_created:
+            return existing_receipt, False
+
         return existing_receipt
 
     # 7. Create receipt lines and update inventory.
@@ -337,4 +343,8 @@ def receive_purchase_order(*,purchase_order_id,received_by,items,supplier_refere
     fully_received = all( received_totals[str(order_item.id)] >= order_item.quantity_ordered for order_item in purchase_order_items)
     purchase_order.status = ( PurchaseOrder.Status.RECEIVED if fully_received else PurchaseOrder.Status.PARTIALLY_RECEIVED)
     purchase_order.save(update_fields=["status", "updated_at"])
+
+    if return_created:
+        return receipt, True
+
     return receipt

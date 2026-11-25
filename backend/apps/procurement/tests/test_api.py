@@ -327,7 +327,7 @@ class GoodsReceiptAPITests(APITestCase):
 
         self.assertEqual(
             response_two.status_code,
-            status.HTTP_201_CREATED,
+            status.HTTP_200_OK,
         )
 
         self.assertEqual(
