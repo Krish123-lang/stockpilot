@@ -120,15 +120,8 @@ def build_receipt_fingerprint( *, purchase_order_id, normalized_items, supplier_
         ),
     }
 
-    serialized = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-
-    return hashlib.sha256(
-        serialized.encode("utf-8")
-    ).hexdigest()
+    serialized = json.dumps(payload,sort_keys=True,separators=(",", ":"),)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 @transaction.atomic
 def receive_purchase_order(*,purchase_order_id,received_by,items,supplier_reference="",notes="",received_at=None,  idempotency_key=None,):
@@ -170,13 +163,16 @@ def receive_purchase_order(*,purchase_order_id,received_by,items,supplier_refere
         raise ValidationError("You are not authorized to receive goods for this organization.")
     
     if idempotency_key is not None:
+        if not isinstance(idempotency_key, str):
+            raise ValidationError("Idempotency key must be a string.")
+
         idempotency_key = idempotency_key.strip()
 
         if not idempotency_key:
             raise ValidationError("Idempotency key cannot be empty.")
 
         if len(idempotency_key) > 128:
-            raise ValidationError( "Idempotency key cannot exceed 128 characters.")
+            raise ValidationError("Idempotency key cannot exceed 128 characters.")
 
     # 4. Validate the submitted receipt lines.
     if not isinstance(items, list) or not items:
